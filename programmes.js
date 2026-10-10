@@ -735,7 +735,9 @@ const MINORS = {
       {k:"all", name:"Requirements", units:20, reqs:[
         {label:"EC1101E Intro to Economic Analysis", any:["EC1101E","BSP1703","BSP1703X","RE1704"]},
         {label:"EC2101 or EC2102", any:["EC2101","EC2102"]}],
-        pool:["EC%","MA1521","ST3131"], caps:[{any:["MA1521","ST3131"], max:4}], hint:"Up to 4 units may be EC-recognised courses (MA1521, ST3131)."}
+        pool:["EC%","FIN2004","FIN2004X","FIN2704","FIN2704X","RE1704","RE2705","MA1102R","MA2002","MA1521","ST3131"],
+        caps:[{any:["FIN2004","FIN2004X","FIN2704","FIN2704X","RE1704","RE2705","MA1102R","MA2002","MA1521","ST3131"], max:4}],
+        hint:"Up to 4 units may be EC-recognised courses: FIN2004/FIN2704, RE1704, RE2705, MA1102R/MA2002/MA1521, ST3131."}
     ]
   },
   aimin: {
