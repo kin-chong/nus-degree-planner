@@ -63,6 +63,7 @@ button{cursor:pointer}
 .prog-note{grid-column:1/-1;margin:0;font-size:.8rem;color:var(--warn);background:var(--warn-soft);border-radius:8px;padding:8px 10px}
 .linkbtn{background:none;border:0;padding:0;color:var(--navy);font-weight:600;text-decoration:underline;cursor:pointer}
 .progbar label{display:flex;flex-direction:column;gap:4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;min-width:0}
+.progbar input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 9px;color:var(--ink);font-size:.9rem;text-transform:none;letter-spacing:0;font-weight:500;width:100%}
 .progbar select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 9px;color:var(--ink);font-size:.9rem;text-transform:none;letter-spacing:0;font-weight:500;width:100%}
 .progbar label.major select{border-color:var(--accent)}
 .progbar .lbl-like{display:flex;flex-direction:column;gap:4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;min-width:0;position:relative}
@@ -112,6 +113,17 @@ button{cursor:pointer}
 .verdict.ok{background:var(--ok-soft)} .verdict.warn{background:var(--warn-soft)}
 .verdict h3{font-size:1rem}
 .verdict ul{margin:0;padding-left:18px;font-size:.86rem}
+
+/* exempted modules */
+.exm{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
+.exm .adder{max-width:420px}
+.exm .adder input#exm-units{flex:none;width:96px;font-family:var(--f-body);text-transform:none}
+.exm.drop-target{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.exm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px}
+.tick-s{width:22px;height:22px;border-radius:6px;background:var(--ok);color:var(--surface);display:grid;place-items:center}
+.tick-s svg{width:14px;height:14px}
+.exm-del{border:0;background:none;padding:0 2px;color:var(--muted);font-size:1.1rem;line-height:1;border-radius:4px}
+.exm-del:hover{color:var(--bad)}
 
 /* main layout */
 .main{display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px;align-items:start}
@@ -228,6 +240,7 @@ body.is-dragging *{cursor:grabbing!important}
       <details class="multi" id="spec-dd"><summary id="spec-sum" aria-labelledby="spec-lbl spec-sum">None yet</summary><div class="multi-pop" id="spec-list" role="group" aria-label="Specialisations"></div></details></div>
     <label for="ddp-sel">Double degree<select id="ddp-sel"></select></label>
     <label for="rc-sel">Residential college<select id="rc-sel"></select></label>
+    <label for="ex-in">Exempted credits<input id="ex-in" type="number" min="0" max="160" step="1" inputmode="numeric" placeholder="0 (e.g. polytechnic)"></label>
     <p class="prog-note" id="prog-note" hidden></p>
   </section>
 
@@ -240,6 +253,8 @@ body.is-dragging *{cursor:grabbing!important}
     </div>
     <div class="verdict" id="verdict"></div>
   </section>
+
+  <section class="exm" id="exm" aria-label="Exempted modules"></section>
 
   <div class="main">
     <aside class="rail" id="rail" aria-label="Graduation requirements"></aside>
@@ -418,8 +433,15 @@ function quickCode(any){
 }
 
 /* ---------- engine ---------- */
+const EXEMPT_ID = "exempt";
+function exemptCourse(){
+  const n = Math.max(0, +state.exempt || 0);
+  return n ? {id:EXEMPT_ID, code:"EXEMPT", title:"Exempted credits", units:n, done:true, bucket:"ue", tag:""} : null;
+}
 function ordered(){
-  const out=[];
+  const out=[], ex=exemptCourse();
+  if(ex) out.push({c:ex, t:null});
+  (state.exemptMods||[]).forEach(c=>out.push({c, t:null}));
   TERMS.forEach(t=> (state.terms[t.id]||[]).forEach(c=>out.push({c,t:t.id})));
   return out;
 }
@@ -587,6 +609,8 @@ const isUntouchedStarter = () => {
 };
 function withStarter(mkey, keep){
   const p = starterPlan(mkey, keep && keep.specs, keep && keep.ddp);
+  const exm = new Set(((keep && keep.exemptMods)||[]).map(c=>c.code));
+  Object.keys(p.terms).forEach(t=>{ p.terms[t] = p.terms[t].filter(c=>!exm.has(c.code)); });
   p.starterSig = termSig(p.terms);
   return Object.assign(p, keep||{});
 }
@@ -677,6 +701,7 @@ function render(){
   /* header + pickers */
   $("#deg-line").textContent = `${M.degree} · ${M.cohort} · ${TOTAL} units${state.rc?` · ${P.RCS[state.rc].name}`:""}`;
   $("#rc-sel").value = state.rc||"";
+  if(document.activeElement!==$("#ex-in")) $("#ex-in").value = state.exempt||"";
   const specs = baseMajor().specs || {};
   $("#spec-wrap").hidden = !Object.keys(specs).length;
   const chosen = new Set(state.specs||[]);
@@ -712,6 +737,7 @@ function render(){
 
   /* projected finish */
   const run = {}; let finish=null;
+  ordered().filter(o=>!o.t).forEach(o=>{ const k=R.where[o.c.id]; run[k]=(run[k]||0)+(+o.c.units||0); });
   for(const t of TERMS){
     (state.terms[t.id]||[]).forEach(c=>{ const k=R.where[c.id]; run[k]=(run[k]||0)+(+c.units||0); });
     const tot = R.gs.reduce((s,G)=>s+Math.min(run[G.g.k]||0,G.g.units),0);
@@ -785,6 +811,13 @@ function render(){
   const gk = Object.fromEntries(M.groups.map(g=>[g.k,g]));
   const extraBadge = id => X.filter(x=>x.R.where[id]).map(x=>kindBadge(x.prog));
 
+  /* exempted modules */
+  const em = state.exemptMods||[];
+  $("#exm").innerHTML = `<div class="req-h"><h2>Exempted modules</h2><span class="n tnum"><b>${U(em)}</b> units</span></div>
+    <p class="note">Courses you are exempted from (e.g. polytechnic or A-level credit). They count as completed toward whichever requirement they match, and satisfy prerequisites, without taking a semester slot. Drag courses in or out to move them between here and your semesters.</p>
+    ${em.length?`<div class="exm-list">${em.map(c=>`<div class="course is-done" data-id="${c.id}"><span class="grip" data-drag="${c.id}" title="Drag to move" aria-hidden="true">${GRIP}</span><span class="tick-s" aria-hidden="true">${TICK}</span><div class="c-body" style="cursor:inherit"><span class="c-code">${esc(c.code)}</span><span class="c-title">${esc(c.title||"")}</span></div><span class="c-side"><span class="c-u tnum">${c.units}u</span><button type="button" class="exm-del" data-exm-del="${c.id}" aria-label="Remove exempted ${esc(c.code)}">×</button></span></div>`).join("")}</div>`:`<div class="empty">None yet. Add a code below, or drag a course here from a semester.</div>`}
+    <form class="adder" id="exm-form"><input id="exm-code" list="catalog" placeholder="Add exempted course code" autocomplete="off" aria-label="Exempted course code"><input id="exm-units" type="number" min="0" max="40" step="1" placeholder="Units (auto)" aria-label="Units"><button type="submit" aria-label="Add">+</button></form>`;
+
   /* years */
   let yh="";
   const years = (state.ddp || ["Y5S1","Y5S2","Y5ST"].some(t=>(state.terms[t]||[]).length)) ? 5 : 4;
@@ -824,7 +857,7 @@ function addCourse(term, raw, open){
   if(!code) return;
   if(/\d/.test(code) && !phOf(code)){
     const dup = ordered().find(o=>o.c.code===code);
-    if(dup){ toast(`${code} is already in ${termName(dup.t)}`); return; }
+    if(dup){ toast(`${code} is already ${dup.t?"in "+termName(dup.t):"in your exempted modules"}`); return; }
   }
   const c = phOf(code) ? ph(code) : mk(code);
   const nm = NM.byCode[code];
@@ -845,6 +878,27 @@ function termName(id){ const t=TERMS[TERM_IDX[id]]; return `Year ${t.y} ${t.labe
 function nextOpenTerm(){
   for(const t of TERMS){ if(t.st) continue; const l=state.terms[t.id]||[]; if(!l.every(c=>c.done) || !l.length){ const u=l.reduce((s,c)=>s+(+c.units||0),0); if(u<20) return t.id; } }
   return "Y4S2";
+}
+
+function addExemptMod(raw, uraw){
+  const code = raw.trim().toUpperCase().split(/\s+/)[0];
+  if(!code) return;
+  if(!/\d/.test(code) || phOf(code)){ toast("Enter a specific course code, e.g. CS1010"); return; }
+  if((state.exemptMods||[]).some(c=>c.code===code)){ toast(`${code} is already exempted`); return; }
+  const c = mk(code, true);
+  const u = parseFloat(uraw);
+  if(uraw!=="" && u>=0) c.units = u;
+  const untouched = isUntouchedStarter();
+  state.exemptMods = [...(state.exemptMods||[]), c];
+  if(untouched){
+    const keep={second:state.second, minors:state.minors, rc:state.rc, exempt:state.exempt,exemptMods:state.exemptMods, custom:state.custom, specs:state.specs, ddp:state.ddp, current:state.current};
+    state = withStarter(state.major, keep);
+  } else {
+    Object.keys(state.terms).forEach(t=>{ state.terms[t]=state.terms[t].filter(x=>x.code!==code); });
+  }
+  save(); render();
+  toast(`${code} marked as exempted${untouched?". Sample plan updated":""}`);
+  if(uraw==="" && !CATMAP[code] && NM.byCode[code]) ensureDetail(code).then(d=>{ if(d){ c.units=d.mc; c.title=c.title||d.title; save(); render(); } });
 }
 
 /* ---------- drag and drop (pointer events: mouse drags the whole row, touch uses the grip) ---------- */
@@ -879,6 +933,8 @@ function locate(x,y){
   if(!hit) return;
   const stBtn=hit.closest("[data-st]");
   if(stBtn){ stBtn.classList.add("drop-target"); drag.target={term:stBtn.dataset.st, idx:0}; return; }
+  const ex=hit.closest("#exm");
+  if(ex){ ex.classList.add("drop-target"); drag.target={exm:true, idx:0}; return; }
   const term=hit.closest(".term[data-term]");
   if(!term) return;
   term.classList.add("drop-target");
@@ -916,14 +972,26 @@ function endDrag(commit){
   d.ghost.remove(); if(d.line.parentNode) d.line.remove();
   d.el.classList.remove("dragging"); document.body.classList.remove("is-dragging"); clearTargets();
   if(!commit || !d.target) return;
-  const f=find(d.id); if(!f) return;
-  const from=f.t, to=d.target.term;
-  state.terms[from].splice(f.i,1);
+  const f=find(d.id), xi=(state.exemptMods||[]).findIndex(c=>c.id===d.id);
+  if(!f && xi<0) return;
+  const c = f ? f.c : state.exemptMods[xi];
+  if(d.target.exm){
+    if(!f) return;
+    if(isPh(c)){ toast("Only specific courses can be marked as exempted"); return; }
+    state.terms[f.t].splice(f.i,1);
+    c.done=true; c.prog=false;
+    state.exemptMods=[...(state.exemptMods||[]), c];
+    save(); render(); toast(`${c.code} marked as exempted`);
+    return;
+  }
+  const to=d.target.term;
+  if(f) state.terms[f.t].splice(f.i,1); else { state.exemptMods.splice(xi,1); c.done=false; c.prog=false; }
   const arr=(state.terms[to]=state.terms[to]||[]);
-  arr.splice(Math.min(d.target.idx,arr.length),0,f.c);
+  arr.splice(Math.min(d.target.idx,arr.length),0,c);
   if(TERMS[TERM_IDX[to]].st) state.showST[to]=true;
   save(); render();
-  if(from!==to) toast(`Moved ${f.c.code} to ${termName(to)}`);
+  if(!f) toast(`${c.code} moved to ${termName(to)} and is no longer exempted`);
+  else if(f.t!==to) toast(`Moved ${c.code} to ${termName(to)}`);
 }
 document.addEventListener("pointerup", e=>{ if(drag && e.pointerId===drag.pid) endDrag(true); });
 document.addEventListener("pointercancel", ()=>endDrag(false));
@@ -931,6 +999,8 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape" && drag && drag.st
 document.addEventListener("click", e=>{ if(suppressClick){ e.stopPropagation(); e.preventDefault(); suppressClick=false; } }, true);
 
 document.addEventListener("click", e=>{
+  const xd = e.target.closest("[data-exm-del]");
+  if(xd){ const c=(state.exemptMods||[]).find(x=>x.id===xd.dataset.exmDel); state.exemptMods=(state.exemptMods||[]).filter(x=>x.id!==xd.dataset.exmDel); save(); render(); if(c) toast(`Removed exemption for ${c.code}`); return; }
   const tog = e.target.closest("[data-tog]");
   if(tog){ const f=find(tog.dataset.tog); if(f){ f.c.done=!f.c.done; if(f.c.done) f.c.prog=false; save(); render(); } return; }
   const ed = e.target.closest("[data-edit]");
@@ -944,6 +1014,12 @@ document.addEventListener("click", e=>{
   if(st){ state.showST[st.dataset.st]=true; save(); render(); const inp=document.getElementById("add-"+st.dataset.st); if(inp) inp.focus(); return; }
 });
 document.addEventListener("submit", e=>{
+  if(e.target.id==="exm-form"){
+    e.preventDefault();
+    addExemptMod($("#exm-code").value, $("#exm-units").value);
+    $("#exm-code").focus();
+    return;
+  }
   const f = e.target.closest("[data-add]");
   if(!f) return;
   e.preventDefault();
@@ -1018,7 +1094,7 @@ $("#maj-sel").onchange=e=>{
   if(e.target.value==="custom"){ state.major="custom"; if(!state.custom) state.custom={name:"",units:160,text:""}; save(); render(); customDialog(); return; }
   if(isUntouchedStarter()){
     const sp = P.MAJORS[e.target.value] && P.MAJORS[e.target.value].specs || {};
-    const keep={second:state.second, minors:state.minors, rc:state.rc, custom:state.custom, specs:(state.specs||[]).filter(k=>sp[k]), ddp:state.ddp!==e.target.value?state.ddp:null};
+    const keep={second:state.second, minors:state.minors, rc:state.rc, exempt:state.exempt,exemptMods:state.exemptMods, custom:state.custom, specs:(state.specs||[]).filter(k=>sp[k]), ddp:state.ddp!==e.target.value?state.ddp:null};
     state = withStarter(e.target.value, keep);
   }
   state.major=e.target.value;
@@ -1033,7 +1109,7 @@ function switchExtra(field, value, msg){
   const untouched = isUntouchedStarter();
   state[field] = Array.isArray(value) ? value : (value||null);
   if(untouched){
-    const keep={second:state.second, minors:state.minors, rc:state.rc, custom:state.custom, specs:state.specs, ddp:state.ddp, current:state.current};
+    const keep={second:state.second, minors:state.minors, rc:state.rc, exempt:state.exempt,exemptMods:state.exemptMods, custom:state.custom, specs:state.specs, ddp:state.ddp, current:state.current};
     state = withStarter(state.major, keep);
   }
   save(); render(); toast((typeof msg==="function"?msg():msg) + (untouched ? ". Sample plan updated" : ""));
@@ -1047,6 +1123,11 @@ $("#spec-list").addEventListener("change", e=>{
 });
 document.addEventListener("click", e=>{ const d=$("#spec-dd"); if(d.open && !d.contains(e.target)) d.open=false; });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") $("#spec-dd").open=false; });
+$("#ex-in").onchange=e=>{
+  const n = Math.max(0, Math.min(major().units, Math.floor(+e.target.value) || 0));
+  state.exempt = n; e.target.value = n||""; save(); render();
+  toast(n ? `${n} exempted units counted as completed, under Unrestricted Electives` : "Exempted credits cleared");
+};
 $("#ddp-sel").onchange=e=>switchExtra("ddp", e.target.value, e.target.value ? `Double degree with ${P.MAJORS[e.target.value].degree||P.MAJORS[e.target.value].name} added. Year 5 is now shown` : "Double degree removed");
 $("#rc-sel").onchange=e=>{ state.rc=e.target.value||""; save(); render(); toast(state.rc ? `${P.RCS[state.rc].name} courses now count toward the requirements they replace` : "Residential college removed"); };
 document.addEventListener("click", e=>{ if(e.target.id==="edit-custom") customDialog(); });
@@ -1094,8 +1175,8 @@ $("#btn-reset").onclick=()=>{
   openDlg(`<h2>Reset the planner</h2><p style="margin:0;color:var(--muted)">This replaces everything on the page. Export first if you want a copy. The sample plan places every required course for ${esc(major().name)} across 4 years; you add your electives.</p>
     <div class="dlg-f"><button type="button" class="btn" id="r-cancel">Cancel</button><div><button type="button" class="btn" id="r-clear">Start empty</button><button type="button" class="btn primary" id="r-sample">Load sample plan</button></div></div>`);
   $("#r-cancel").onclick=closeDlg;
-  $("#r-clear").onclick=()=>{ state={v:2,major:state.major,second:state.second,minors:state.minors||[],specs:state.specs||[],rc:state.rc,custom:state.custom,showST:{},terms:{}}; save(); render(); closeDlg(); toast("Planner cleared"); };
-  $("#r-sample").onclick=()=>{ state=withStarter(state.major,{second:state.second,minors:state.minors,rc:state.rc,custom:state.custom,specs:state.specs,ddp:state.ddp}); save(); render(); closeDlg(); toast("Sample plan loaded. Switch major above to see another major's sample"); };
+  $("#r-clear").onclick=()=>{ state={v:2,major:state.major,second:state.second,minors:state.minors||[],specs:state.specs||[],rc:state.rc,exempt:state.exempt,exemptMods:state.exemptMods,custom:state.custom,showST:{},terms:{}}; save(); render(); closeDlg(); toast("Planner cleared"); };
+  $("#r-sample").onclick=()=>{ state=withStarter(state.major,{second:state.second,minors:state.minors,rc:state.rc,exempt:state.exempt,exemptMods:state.exemptMods,custom:state.custom,specs:state.specs,ddp:state.ddp}); save(); render(); closeDlg(); toast("Sample plan loaded. Switch major above to see another major's sample"); };
 };
 $("#btn-io").onclick=()=>{
   openDlg(`<h2>Export / Import</h2><label>Your plan as text. Copy it to back up, or paste a saved plan and press Import.<textarea id="io-t">${esc(JSON.stringify(state))}</textarea></label>
@@ -1114,7 +1195,8 @@ function toast(msg){ let el=$("#toast"); if(!el){ el=document.createElement("div
 /* ---------- persistence (this browser) ---------- */
 const LS="nus-cs-planner-v1";
 function normalize(s){
-  s.showST=s.showST||{}; s.terms=s.terms||{};
+  s.showST=s.showST||{}; s.terms=s.terms||{}; s.exempt=Math.max(0,Math.floor(+s.exempt)||0);
+  s.exemptMods=(s.exemptMods||[]).filter(c=>c&&c.code).map(c=>Object.assign({id:uid(),title:"",units:4,bucket:"auto",tag:""},c,{done:true}));
   if(!P.MAJORS[s.major] && s.major!=="custom") s.major="cs";
   if(!P.RCS[s.rc||""]) s.rc="";
   if(s.second==="math") s.second="ma2";
@@ -1210,6 +1292,7 @@ function issues(c, termId){
   const idx=TERM_IDX[termId];
   const before=[];
   TERMS.forEach((t,i)=>{ if(i<idx) (state.terms[t.id]||[]).forEach(x=>{ before.push(x.code); (ALIAS[x.code]||[]).forEach(a=>before.push(a)); }); });
+  (state.exemptMods||[]).forEach(x=>{ before.push(x.code); (ALIAS[x.code]||[]).forEach(a=>before.push(a)); });
   if(d.tree && !c.done && !evalTree(d.tree,before)) out.push("Prerequisites not met by earlier terms");
   const t=TERMS[idx], want=t.st?[3,4]:[t.label.endsWith("1")?1:2];
   if(d.sems.length && !want.some(s=>d.sems.includes(s)) && !c.done) out.push(`Not offered in ${t.st?"Special Term":t.label} (AY${NM.ay})`);
